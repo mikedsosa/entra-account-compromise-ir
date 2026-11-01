@@ -12,9 +12,11 @@
 //         (ForwardTo, ForwardAsAttachmentTo, RedirectTo, DeleteMessage,
 //         SoftDeleteMessage, PermanentDelete, MoveToFolder, MarkAsRead) are
 //         New-InboxRule cmdlet parameters. The match is a plain text match on
-//         the Parameters string column. Rules created from Outlook clients
-//         (UpdateInboxRules) may not carry the same parameter text. That
-//         hasn't been verified, so review all UpdateInboxRules rows by hand.
+//         the Parameters string column. Rules changed from Outlook clients
+//         (UpdateInboxRules) carry their rule actions in OperationProperties,
+//         not Parameters, per third-party detections (Splunk Security
+//         Content); Microsoft doesn't document the layout. Review all
+//         UpdateInboxRules rows by hand.
 //         ID Protection also has suspiciousInboxForwarding and
 //         mcasSuspiciousInboxManipulationRules detections. To pull those,
 //         change the RiskEventType list in query 01.
@@ -22,6 +24,7 @@
 //   https://learn.microsoft.com/en-us/azure/azure-monitor/reference/tables/officeactivity
 //   https://learn.microsoft.com/en-us/purview/audit-log-activities
 //   https://learn.microsoft.com/en-us/powershell/module/exchangepowershell/new-inboxrule?view=exchange-ps
+//   https://github.com/splunk/security_content/blob/develop/detections/cloud/o365_new_email_forwarding_rule_enabled.yml (third-party, not Microsoft)
 //   https://attack.mitre.org/techniques/T1114/003/
 //   https://attack.mitre.org/techniques/T1564/008/
 // =============================================================================
@@ -29,10 +32,13 @@ let lookback = 7d;
 OfficeActivity
 | where TimeGenerated > ago(lookback)
 | where Operation in~ ("New-InboxRule", "Set-InboxRule", "UpdateInboxRules")
-| extend Forwards = Parameters has_any ("ForwardTo", "ForwardAsAttachmentTo", "RedirectTo"),
+| extend OpProps = tostring(OperationProperties)
+| extend Forwards = Parameters has_any ("ForwardTo", "ForwardAsAttachmentTo", "RedirectTo")
+                    or OpProps has_any ("ForwardToRecipientsAction", "ForwardAsAttachmentToRecipientsAction",
+                                        "RedirectToRecipientsAction"),
          HidesOrDeletes = Parameters has_any ("DeleteMessage", "SoftDeleteMessage", "PermanentDelete",
                                               "MoveToFolder", "MarkAsRead")
 | where Forwards or HidesOrDeletes or Operation =~ "UpdateInboxRules"
 | project TimeGenerated, Operation, UserId, MailboxOwnerUPN, ClientIP, ClientInfoString,
-          ResultStatus, Forwards, HidesOrDeletes, Parameters
+          ResultStatus, Forwards, HidesOrDeletes, Parameters, OperationProperties
 | order by TimeGenerated desc

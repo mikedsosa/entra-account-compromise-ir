@@ -29,6 +29,10 @@ phases to the new Functions, so both are shown.
 | 5. Recover | Containment, Eradication & Recovery | Recover |
 | 6. Lessons learned | Post-Incident Activity | Identify (Improvement) |
 
+Table 1 maps whole phases; the split across steps 3–5 is this runbook's
+reading. Table 1 also lists Identify (Improvement) for Containment,
+Eradication & Recovery.
+
 ## Flow
 
 ```mermaid
@@ -54,9 +58,9 @@ flowchart TD
 
 | Item | Why | Source |
 |---|---|---|
-| Send `SigninLogs`, `AADNonInteractiveUserSignInLogs`, `AuditLogs`, `AADUserRiskEvents`, `AADRiskyUsers` to Sentinel / Log Analytics | Entra keeps audit logs for 30 days unless they are exported. Sign-in log ingestion needs Entra ID P1 or P2 | [Sentinel Entra ID connector](https://learn.microsoft.com/en-us/azure/sentinel/connect-azure-active-directory), [Security operations: user accounts](https://learn.microsoft.com/en-us/entra/architecture/security-operations-user-accounts) |
+| Send `SigninLogs`, `AADNonInteractiveUserSignInLogs`, `AuditLogs`, `AADUserRiskEvents`, `AADRiskyUsers` to Sentinel / Log Analytics | Entra keeps audit logs for 7 days (Free) or 30 days (P1/P2) unless they are exported. Sign-in log ingestion needs Entra ID P1 or P2 | [Sentinel Entra ID connector](https://learn.microsoft.com/en-us/azure/sentinel/connect-azure-active-directory), [Entra data retention](https://learn.microsoft.com/en-us/entra/identity/monitoring-health/reference-reports-data-retention), [Security operations: user accounts](https://learn.microsoft.com/en-us/entra/architecture/security-operations-user-accounts) |
 | Connect Microsoft 365 / Exchange audit (`OfficeActivity`) | Needed for inbox-rule and mailbox evidence | [OfficeActivity table](https://learn.microsoft.com/en-us/azure/azure-monitor/reference/tables/officeactivity), [Purview audit activities](https://learn.microsoft.com/en-us/purview/audit-log-activities) |
-| Turn on "Report suspicious activity" for MFA | A user report raises the user to high risk and gives you a signal (query 04) | [MFA settings](https://learn.microsoft.com/en-us/entra/identity/authentication/howto-mfa-mfasettings) |
+| Turn on "Report suspicious activity" for MFA | A user report sets the user to High risk (not for passwordless sign-ins) and gives you a signal (query 04) | [MFA settings](https://learn.microsoft.com/en-us/entra/identity/authentication/howto-mfa-mfasettings) |
 | Pre-approve the responder roles and Graph permissions in the tables below | Avoids waiting on access in the middle of an incident | Graph pages cited per step |
 | Keep break-glass accounts excluded from blocking CA policies | Avoids locking yourself out while containing | [Block access by location](https://learn.microsoft.com/en-us/entra/identity/conditional-access/policy-block-by-location) |
 
@@ -96,9 +100,11 @@ contain. Containment can be reversed. Data loss can't.
      interactively (possible token replay: [T1550.001](https://attack.mitre.org/techniques/T1550/001/), [T1539](https://attack.mitre.org/techniques/T1539/))
 3. **Check how the user authenticated.** In `SigninLogs`, look at
    `AuthenticationRequirement`, `AuthenticationDetails`,
-   `ConditionalAccessStatus` and `ClientAppUsed`. Legacy clients (Other
-   clients, POP, IMAP, MAPI, SMTP, ActiveSync) bypass MFA. They are flagged in
-   [Security operations: user accounts](https://learn.microsoft.com/en-us/entra/architecture/security-operations-user-accounts).
+   `ConditionalAccessStatus` and `ClientAppUsed`. Legacy protocols (Other
+   clients, POP, IMAP, MAPI, SMTP, ActiveSync) don't support MFA.
+   [Security operations: user accounts](https://learn.microsoft.com/en-us/entra/architecture/security-operations-user-accounts)
+   flags them, and Microsoft recommends blocking them
+   ([Block legacy authentication](https://learn.microsoft.com/en-us/entra/identity/conditional-access/policy-block-legacy-authentication)).
 4. **Ask the user** (out of band, not by email to the possibly compromised
    mailbox): did you travel, approve a prompt or enter a code?
 5. **Check for persistence already in place:** queries `06`, `07`, `08`, `10`.
@@ -107,7 +113,9 @@ contain. Containment can be reversed. Data loss can't.
    ```powershell
    Get-MgUserAuthenticationMethod -UserId <user-id>
    ```
-   (Graph permission: `UserAuthenticationMethod.Read.All`.)
+   (Graph permission: `UserAuthenticationMethod.Read.All`; least roles when
+   reading another user: Global Reader, Authentication Administrator (sees
+   masked phone numbers), Privileged Authentication Administrator.)
 7. **Decide:** benign (close and tune), suspicious (contain) or confirmed
    (contain and escalate). If the user holds admin roles, escalate at once.
 
@@ -119,21 +127,28 @@ password reset alone doesn't end sessions that already exist.
 
 | # | Action | How | Permission / least role | Source |
 |---|---|---|---|---|
-| 3.1 | **Disable the account** (blocks sign-in) | `Update-MgUser -UserId <id> -AccountEnabled:$false`, or `PATCH /users/{id}` with `{"accountEnabled": false}` | `User.EnableDisableAccount.All` + `User.Read.All`. User Administrator for non-admins, Privileged Authentication Administrator for admins | [Update user](https://learn.microsoft.com/en-us/graph/api/user-update?view=graph-rest-1.0), [Revoke user access](https://learn.microsoft.com/en-us/entra/identity/users/users-revoke-access) |
+| 3.1 | **Disable the account** (blocks sign-in) | `Update-MgUser -UserId <id> -AccountEnabled:$false`, or `PATCH /users/{id}` with `{"accountEnabled": false}` | `User.EnableDisableAccount.All` + `User.Read.All`. User Administrator for non-admins, Privileged Authentication Administrator for admins | [Update user](https://learn.microsoft.com/en-us/graph/api/user-update?view=graph-rest-1.0), [Revoke user access](https://learn.microsoft.com/en-us/entra/identity/users/users-revoke-access), [Privileged roles and permissions](https://learn.microsoft.com/en-us/entra/identity/role-based-access-control/privileged-roles-permissions) |
 | 3.2 | **Revoke sessions / refresh tokens** | `Revoke-MgUserSignInSession -UserId <id>`, or `POST /users/{id}/revokeSignInSessions` | `User.RevokeSessions.All` | [revokeSignInSessions](https://learn.microsoft.com/en-us/graph/api/user-revokesigninsessions?view=graph-rest-1.0) |
-| 3.3 | **Reset the password** and force a change at next sign-in | `PATCH /users/{id}` with `passwordProfile` and `forceChangePasswordNextSignIn: true`. For hybrid accounts, reset in on-premises AD (twice, per Learn) and disable there with `Disable-ADAccount` | `User-PasswordProfile.ReadWrite.All` (cloud-only accounts; not usable for federated users) | [Update user](https://learn.microsoft.com/en-us/graph/api/user-update?view=graph-rest-1.0), [Revoke user access](https://learn.microsoft.com/en-us/entra/identity/users/users-revoke-access) |
+| 3.3 | **Reset the password** and force a change at next sign-in | `PATCH /users/{id}` with `passwordProfile` and `forceChangePasswordNextSignIn: true`. For hybrid accounts, reset in on-premises AD (twice, per Learn) and disable there with `Disable-ADAccount` | `User-PasswordProfile.ReadWrite.All` (cloud-only accounts; not usable for federated users). User Administrator for non-admins, Privileged Authentication Administrator for admins. In app-only use, the app also needs at least User Administrator | [Update user](https://learn.microsoft.com/en-us/graph/api/user-update?view=graph-rest-1.0), [Revoke user access](https://learn.microsoft.com/en-us/entra/identity/users/users-revoke-access) |
 | 3.4 | **Mark the user compromised** (ID Protection P2) so user-risk policies apply | `Confirm-MgRiskyUserCompromised -UserIds <id>`, or `POST /identityProtection/riskyUsers/confirmCompromised` | `IdentityRiskyUser.ReadWrite.All`. Security Administrator | [confirmCompromised](https://learn.microsoft.com/en-us/graph/api/riskyuser-confirmcompromised?view=graph-rest-1.0) |
 | 3.5 | **Block attacker infrastructure** if it's a clear set of IPs or countries: a Conditional Access policy with Grant > Block, scoped to a named location, excluding break-glass accounts | Entra admin center > Conditional Access. CA applies after first-factor authentication | Conditional Access Administrator | [Block access by location](https://learn.microsoft.com/en-us/entra/identity/conditional-access/policy-block-by-location) |
-| 3.6 | **Disable the user's devices** if a device may be attacker-registered or compromised | Entra admin center > Devices (the Learn page covers disabling devices; check it for the current role) | See Learn | [Revoke user access](https://learn.microsoft.com/en-us/entra/identity/users/users-revoke-access) |
+| 3.6 | **Disable the user's devices** if a device may be attacker-registered or compromised | `Get-MgUserRegisteredDevice -UserId <id> -All \| ForEach-Object { Update-MgDevice -DeviceId $_.Id -AccountEnabled:$false }` | Cloud Device Administrator | [Revoke user access](https://learn.microsoft.com/en-us/entra/identity/users/users-revoke-access) |
 
 **Timing caveats (from Learn):** revocation can take a few minutes to apply.
-Access tokens already issued stay valid until they expire (about one hour)
-unless the app supports Continuous Access Evaluation. That's why you disable
-the account and reset the password as well as revoking sessions.
+Access tokens already issued stay valid until they expire (by default a random
+60–90 minutes, about 75 on average) unless the app supports Continuous Access
+Evaluation. CAE-aware clients can hold tokens of up to 28 hours, but those are
+revoked in near real time on events such as account disablement and password
+change ([access tokens](https://learn.microsoft.com/en-us/entra/identity-platform/access-tokens),
+[configurable token lifetimes](https://learn.microsoft.com/en-us/entra/identity-platform/configurable-token-lifetimes)).
+That's why you disable the account and reset the password as well as revoking
+sessions.
 
 **Verify:** run query `12` with `contained_at` set. Expect the containment
-activities to appear in `AuditLogs` (`Disable account`,
-`Update StsRefreshTokenValidFrom Timestamp`, `Reset password (by admin)`) and
+activities to appear in `AuditLogs` (for example `Disable account` or
+`Update user`, `Update StsRefreshTokenValidFrom Timestamp`, and
+`Reset password` or `Reset password (by admin)`; the exact name depends on the
+tool used, so query 12 matches all of them) and
 no successful sign-ins after that time. If sign-ins still succeed, go back to 3.
 
 ATT&CK techniques this step disrupts: [T1078.004](https://attack.mitre.org/techniques/T1078/004/), [T1539](https://attack.mitre.org/techniques/T1539/), [T1550.001](https://attack.mitre.org/techniques/T1550/001/).
@@ -146,8 +161,8 @@ alert.
 
 | # | Remove | How | ATT&CK | Source |
 |---|---|---|---|---|
-| 4.1 | Malicious inbox rules (forward, redirect, delete, hide) | `Get-InboxRule -Mailbox <upn>` to review, then `Remove-InboxRule`. Learn notes that Exchange PowerShell rule changes also remove client-side rules that Outlook disabled. Export the rules as evidence first | [T1114.003](https://attack.mitre.org/techniques/T1114/003/), [T1564.008](https://attack.mitre.org/techniques/T1564/008/) | [Remove-InboxRule](https://learn.microsoft.com/en-us/powershell/module/exchangepowershell/remove-inboxrule?view=exchange-ps) |
-| 4.2 | Illicit OAuth consent | Delete the delegated grant: `Remove-MgOauth2PermissionGrant -OAuth2PermissionGrantId <id>` (`DELETE /oAuth2PermissionGrants/{id}`, `DelegatedPermissionGrant.ReadWrite.All`). The app consent playbook advises **disabling** the malicious app (service principal) rather than deleting it, so evidence is kept. Access tokens already issued stay valid until they expire | [T1528](https://attack.mitre.org/techniques/T1528/), [T1550.001](https://attack.mitre.org/techniques/T1550/001/) | [Delete oAuth2PermissionGrant](https://learn.microsoft.com/en-us/graph/api/oauth2permissiongrant-delete?view=graph-rest-1.0), [App consent IR playbook](https://learn.microsoft.com/en-us/security/operations/incident-response-playbook-app-consent) |
+| 4.1 | Malicious inbox rules (forward, redirect, delete, hide) | `Get-InboxRule -Mailbox <upn>` to review, then `Remove-InboxRule`. Learn notes that creating, changing or removing inbox rules in Exchange PowerShell removes client-side rules created by Outlook. Export the rules as evidence first | [T1114.003](https://attack.mitre.org/techniques/T1114/003/), [T1564.008](https://attack.mitre.org/techniques/T1564/008/) | [Remove-InboxRule](https://learn.microsoft.com/en-us/powershell/module/exchangepowershell/remove-inboxrule?view=exchange-ps) |
+| 4.2 | Illicit OAuth consent | Delete the delegated grant: `Remove-MgOauth2PermissionGrant -OAuth2PermissionGrantId <id>` (`DELETE /oAuth2PermissionGrants/{id}`, `DelegatedPermissionGrant.ReadWrite.All`; least roles: Application Administrator, Application Developer, Cloud Application Administrator, Directory Writers, Privileged Role Administrator, User Administrator). The app consent playbook advises **disabling** the malicious app (service principal) rather than deleting it, so evidence is kept. Access tokens already issued stay valid until they expire | [T1528](https://attack.mitre.org/techniques/T1528/), [T1550.001](https://attack.mitre.org/techniques/T1550/001/) | [Delete oAuth2PermissionGrant](https://learn.microsoft.com/en-us/graph/api/oauth2permissiongrant-delete?view=graph-rest-1.0), [App consent IR playbook](https://learn.microsoft.com/en-us/security/operations/incident-response-playbook-app-consent) |
 | 4.3 | Attacker-registered MFA methods | Compare the method list from triage step 6 with what the user confirms is theirs. Delete unknown methods (Entra admin center > user > Authentication methods). Look for `User registered security info` and `Admin registered security info` in the window | [T1556.006](https://attack.mitre.org/techniques/T1556/006/) | [List methods](https://learn.microsoft.com/en-us/graph/api/authentication-list-methods?view=graph-rest-1.0), [Audit activities](https://learn.microsoft.com/en-us/entra/identity/monitoring-health/reference-audit-activities) |
 | 4.4 | Attacker-registered or joined devices | Review `Register device` / `Add device` events (query `08`, `10`), then disable or delete the device | [T1098.005](https://attack.mitre.org/techniques/T1098/005/) | [Audit activities](https://learn.microsoft.com/en-us/entra/identity/monitoring-health/reference-audit-activities) |
 | 4.5 | Role assignments the attacker added | Review `Add member to role` / `Add eligible member to role` (query `10`) and remove anything unapproved | [T1098.003](https://attack.mitre.org/techniques/T1098/003/) | [Audit activities](https://learn.microsoft.com/en-us/entra/identity/monitoring-health/reference-audit-activities) |

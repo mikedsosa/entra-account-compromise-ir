@@ -11,7 +11,7 @@ since then, the page wins over this repo.
 | `AADNonInteractiveUserSignInLogs`: same core columns; LocationDetails, DeviceDetail, Status are **string**; AuthenticationProtocol includes `deviceCode` | https://learn.microsoft.com/en-us/azure/azure-monitor/reference/tables/aadnoninteractiveusersigninlogs |
 | `AuditLogs`: TimeGenerated, OperationName, Category, InitiatedBy (dynamic), TargetResources (dynamic), AdditionalDetails, Result, ResultReason, CorrelationId | https://learn.microsoft.com/en-us/azure/azure-monitor/reference/tables/auditlogs |
 | `AADUserRiskEvents`: TimeGenerated, ActivityDateTime, DetectedDateTime, UserPrincipalName, UserId, RiskEventType, RiskLevel, RiskState, RiskDetail, DetectionTimingType, Source, IpAddress, Location, CorrelationId, RequestId | https://learn.microsoft.com/en-us/azure/azure-monitor/reference/tables/aaduserriskevents |
-| `OfficeActivity`: TimeGenerated, Operation, UserId, MailboxOwnerUPN, ClientIP, ClientInfoString, ResultStatus, Parameters (string) | https://learn.microsoft.com/en-us/azure/azure-monitor/reference/tables/officeactivity |
+| `OfficeActivity`: TimeGenerated, Operation, UserId, MailboxOwnerUPN, ClientIP, ClientInfoString, ResultStatus, Parameters (string), OperationProperties (dynamic) | https://learn.microsoft.com/en-us/azure/azure-monitor/reference/tables/officeactivity |
 | Sentinel Entra ID connector: log types and tables, P1/P2 needed for sign-in logs | https://learn.microsoft.com/en-us/azure/sentinel/connect-azure-active-directory |
 
 ## Field shapes and values (Microsoft Graph resources that the log columns mirror)
@@ -22,6 +22,7 @@ since then, the page wins over this repo.
 | `Status.additionalDetails`, `errorCode`, `failureReason` | https://learn.microsoft.com/en-us/graph/api/resources/signinstatus?view=graph-rest-1.0 |
 | `LocationDetails.geoCoordinates` (signInLocation: city, state, countryOrRegion, geoCoordinates) | https://learn.microsoft.com/en-us/graph/api/resources/signinlocation?view=graph-rest-1.0 |
 | `geoCoordinates.latitude` / `.longitude` | https://learn.microsoft.com/en-us/graph/api/resources/geocoordinates?view=graph-rest-1.0 |
+| `LocationDetails.geoCoordinates["latitude"]` used against SigninLogs in a Microsoft query (partly verifies the path) | https://techcommunity.microsoft.com/blog/microsoft-entra-blog/visualize-entra-sign-in-logs-using-an-interactive-map/4013853 |
 | `riskEventType` enum (incl. `impossibleTravel`, `unlikelyTravel`), `riskLevel` values | https://learn.microsoft.com/en-us/graph/api/resources/riskdetection?view=graph-rest-1.0 |
 | `TargetResources[]`: displayName, id, type, userPrincipalName, modifiedProperties | https://learn.microsoft.com/en-us/graph/api/resources/targetresource?view=graph-rest-1.0 |
 | `InitiatedBy.user` / `InitiatedBy.app` | https://learn.microsoft.com/en-us/graph/api/resources/auditactivityinitiator?view=graph-rest-1.0 |
@@ -33,13 +34,19 @@ since then, the page wins over this repo.
 | Item used | Source |
 |---|---|
 | Risk detection names: unlikelyTravel, mcasImpossibleTravel, passwordSpray, attackerinTheMiddle, anomalousToken, suspiciousInboxForwarding, mcasSuspiciousInboxManipulationRules, userReportedSuspiciousActivity; "generic" for non-P2 | https://learn.microsoft.com/en-us/entra/id-protection/concept-identity-protection-risks |
-| Entra audit activity names: Consent to application; Add delegated permission grant; Add app role assignment to service principal; Add service principal; Add service principal credentials; Update application - Certificates and secrets management; Add owner to application; Add member to role; Add eligible member to role; User/Admin registered security info; User deleted security info; Register device; Add device; Add/Update/Delete Conditional Access policy; Update named location; Set federation settings on domain; Set domain authentication; Add verified domain; Add user; Invite external user; Disable account; Update StsRefreshTokenValidFrom Timestamp; Reset password (by admin); Change user password; ConfirmAccountCompromised; Suspicious activity reported; Fraud reported - user is blocked for MFA; Fraud reported - no action taken | https://learn.microsoft.com/en-us/entra/identity/monitoring-health/reference-audit-activities |
-| Error codes 50126, 500121, 53003, 50057; legacy client apps; "MFA Denied" fraud alerts; 30-day audit retention | https://learn.microsoft.com/en-us/entra/architecture/security-operations-user-accounts |
+| Entra audit activity names: Consent to application; Add delegated permission grant; Add app role assignment to service principal; Add service principal; Add service principal credentials; Update application - Certificates and secrets management; Add owner to application; Add member to role; Add eligible member to role; User/Admin registered security info; User deleted security info; Register device; Add device; Add/Update/Delete Conditional Access policy; Update named location; Set federation settings on domain; Set domain authentication; Add verified domain; Add user; Invite external user; Disable account; Update user; Update StsRefreshTokenValidFrom Timestamp; Reset password; Reset password (by admin); Set force change user password; Change user password; ConfirmAccountCompromised; ConfirmCompromised; Admin deleted security info; Suspicious activity reported; Fraud reported - user is blocked for MFA; Fraud reported - no action taken | https://learn.microsoft.com/en-us/entra/identity/monitoring-health/reference-audit-activities |
+| Error codes 50126, 500121, 53003, 50057; legacy client apps; "MFA Denied" fraud alerts | https://learn.microsoft.com/en-us/entra/architecture/security-operations-user-accounts |
+| Legacy protocols don't support MFA; Microsoft recommends blocking them | https://learn.microsoft.com/en-us/entra/identity/conditional-access/policy-block-legacy-authentication |
 | 500121 = "Authentication failed during strong authentication request." | https://login.microsoftonline.com/error?code=500121 |
+| Entra audit/sign-in retention 7 days Free, 30 days P1/P2 | https://learn.microsoft.com/en-us/entra/identity/monitoring-health/reference-reports-data-retention |
+| Purview Audit (Standard) 180-day retention (90 days for records before Oct 17, 2023) | https://learn.microsoft.com/en-us/purview/audit-solutions-overview |
 | MFA denial filter (`Status.additionalDetails` "MFA denied; user declined the authentication" / "fraud") | https://github.com/Azure/Azure-Sentinel/blob/master/Solutions/Microsoft%20Entra%20ID/Analytic%20Rules/MFARejectedbyUser.yaml |
-| "Report suspicious activity" raises user risk to high | https://learn.microsoft.com/en-us/entra/identity/authentication/howto-mfa-mfasettings |
+| "Report suspicious activity" sets user risk to High (not for passwordless sign-ins); legacy Fraud alert feature removed Mar 1, 2025 | https://learn.microsoft.com/en-us/entra/identity/authentication/howto-mfa-mfasettings |
 | Exchange audit operations New-InboxRule, Set-InboxRule, UpdateInboxRules; Audit (Standard) 180-day retention | https://learn.microsoft.com/en-us/purview/audit-log-activities |
 | Inbox rule parameters ForwardTo, ForwardAsAttachmentTo, RedirectTo, DeleteMessage, SoftDeleteMessage, PermanentDelete, MoveToFolder, MarkAsRead | https://learn.microsoft.com/en-us/powershell/module/exchangepowershell/new-inboxrule?view=exchange-ps |
+| Consent fields `ConsentContext.IsAdminConsent` in `TargetResources[].modifiedProperties` | https://learn.microsoft.com/en-us/entra/architecture/security-operations-applications |
+| `ConsentContext.IsAdminConsent` and `ConsentAction.Permissions` ("ConsentType: …, Scope: …") read from modifiedProperties | https://github.com/Azure/Azure-Sentinel/blob/master/Solutions/Microsoft%20Entra%20ID/Analytic%20Rules/CredentialAddedAfterAdminConsent.yaml , https://github.com/Azure/Azure-Sentinel/blob/master/Solutions/Microsoft%20Entra%20ID/Analytic%20Rules/MaliciousOAuthApp_O365AttackToolkit.yaml |
+| UpdateInboxRules actions (ForwardToRecipientsAction, ForwardAsAttachmentToRecipientsAction, RedirectToRecipientsAction) in OperationProperties: third-party, not Microsoft-documented | https://github.com/splunk/security_content/blob/develop/detections/cloud/o365_new_email_forwarding_rule_enabled.yml |
 | App consent investigation: IsAdminConsent, ConsentType AllPrincipals/Principal, high-risk delegated scopes, disable the app rather than delete it | https://learn.microsoft.com/en-us/security/operations/incident-response-playbook-app-consent |
 
 ## KQL functions
@@ -55,11 +62,13 @@ since then, the page wins over this repo.
 | Item used | Source |
 |---|---|
 | `POST /users/{id}/revokeSignInSessions`, `Revoke-MgUserSignInSession`, `User.RevokeSessions.All`, a few minutes' delay | https://learn.microsoft.com/en-us/graph/api/user-revokesigninsessions?view=graph-rest-1.0 |
-| Disable the account and devices, hybrid `Disable-ADAccount`, reset the password twice, ~1 h access token lifetime, CAE | https://learn.microsoft.com/en-us/entra/identity/users/users-revoke-access |
+| Disable the account and devices, hybrid `Disable-ADAccount`, reset the password twice, ~1 h access token lifetime, CAE, Cloud Device Administrator for disabling devices | https://learn.microsoft.com/en-us/entra/identity/users/users-revoke-access |
+| Access token lifetime a random 60–90 minutes (75 on average); CAE long-lived tokens up to 28 hours | https://learn.microsoft.com/en-us/entra/identity-platform/access-tokens , https://learn.microsoft.com/en-us/entra/identity-platform/configurable-token-lifetimes |
 | `PATCH /users/{id}` accountEnabled / passwordProfile, `forceChangePasswordNextSignIn`, permissions and least roles | https://learn.microsoft.com/en-us/graph/api/user-update?view=graph-rest-1.0 |
 | `POST /identityProtection/riskyUsers/confirmCompromised`, `Confirm-MgRiskyUserCompromised`, `IdentityRiskyUser.ReadWrite.All`, Security Administrator | https://learn.microsoft.com/en-us/graph/api/riskyuser-confirmcompromised?view=graph-rest-1.0 |
-| `DELETE /oAuth2PermissionGrants/{id}`, `Remove-MgOauth2PermissionGrant`, existing tokens stay valid | https://learn.microsoft.com/en-us/graph/api/oauth2permissiongrant-delete?view=graph-rest-1.0 |
-| `GET /users/{id}/authentication/methods`, `Get-MgUserAuthenticationMethod`, `UserAuthenticationMethod.Read.All` | https://learn.microsoft.com/en-us/graph/api/authentication-list-methods?view=graph-rest-1.0 |
+| `DELETE /oAuth2PermissionGrants/{id}`, `Remove-MgOauth2PermissionGrant`, existing tokens stay valid, least roles | https://learn.microsoft.com/en-us/graph/api/oauth2permissiongrant-delete?view=graph-rest-1.0 |
+| `GET /users/{id}/authentication/methods`, `Get-MgUserAuthenticationMethod`, `UserAuthenticationMethod.Read.All`, least roles (Global Reader, Authentication Administrator, Privileged Authentication Administrator) | https://learn.microsoft.com/en-us/graph/api/authentication-list-methods?view=graph-rest-1.0 |
+| Sensitive user actions (accountEnabled): User Administrator for non-admins, Privileged Authentication Administrator for admins | https://learn.microsoft.com/en-us/entra/identity/role-based-access-control/privileged-roles-permissions |
 | CA block by location, break-glass exclusion, report-only first, applied after first-factor auth, Conditional Access Administrator | https://learn.microsoft.com/en-us/entra/identity/conditional-access/policy-block-by-location |
 | `Get-InboxRule` / `Remove-InboxRule` | https://learn.microsoft.com/en-us/powershell/module/exchangepowershell/remove-inboxrule?view=exchange-ps |
 
@@ -68,7 +77,7 @@ since then, the page wins over this repo.
 | Item used | Source |
 |---|---|
 | NIST SP 800-61 Rev. 2: Preparation; Detection & Analysis; Containment, Eradication & Recovery; Post-Incident Activity (Figure 3-1) | https://csrc.nist.gov/pubs/sp/800/61/r2/final |
-| NIST SP 800-61 Rev. 3 (April 2025): supersedes Rev. 2; Table 1 maps the Rev. 2 phases to CSF 2.0 Functions | https://csrc.nist.gov/pubs/sp/800/61/r3/final |
+| NIST SP 800-61 Rev. 3 (April 2025): supersedes Rev. 2; Table 1 maps the Rev. 2 phases to CSF 2.0 Functions (phase level; the per-step split in the runbook is this repo's reading) | https://csrc.nist.gov/pubs/sp/800/61/r3/final |
 
 ## MITRE ATT&CK (Enterprise)
 

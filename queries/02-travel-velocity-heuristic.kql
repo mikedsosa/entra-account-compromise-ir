@@ -10,16 +10,16 @@
 // ATT&CK: T1078.004 Valid Accounts: Cloud Accounts
 // Table:  SigninLogs (LocationDetails is dynamic in this table)
 // Fields: LocationDetails.geoCoordinates.latitude / .longitude
-//         The path follows the Microsoft Graph signInLocation and
-//         geoCoordinates resources. The Azure Monitor page documents
-//         LocationDetails only as including latitude and longitude, so confirm
-//         the path against your own data before you rely on it.
+//         Partly verified: the path matches the Microsoft Graph signInLocation
+//         and geoCoordinates resources and a Microsoft Entra blog query
+//         against SigninLogs; not run against our data.
 // Thresholds: min_km and max_kmh are starting assumptions for tuning. They
 //         are not measured values.
 // Sources:
 //   https://learn.microsoft.com/en-us/azure/azure-monitor/reference/tables/signinlogs
 //   https://learn.microsoft.com/en-us/graph/api/resources/signinlocation?view=graph-rest-1.0
 //   https://learn.microsoft.com/en-us/graph/api/resources/geocoordinates?view=graph-rest-1.0
+//   https://techcommunity.microsoft.com/blog/microsoft-entra-blog/visualize-entra-sign-in-logs-using-an-interactive-map/4013853
 //   https://learn.microsoft.com/en-us/kusto/query/geo-distance-2points-function
 //   https://learn.microsoft.com/en-us/kusto/query/prev-function
 //   https://attack.mitre.org/techniques/T1078/004/

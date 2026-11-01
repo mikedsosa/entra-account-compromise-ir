@@ -116,9 +116,10 @@ dotnet run -- ../..
   and `Status` are `dynamic` in `SigninLogs` but `string` in
   `AADNonInteractiveUserSignInLogs`. The union queries project only scalar
   columns for that reason.
-- **Retention.** Entra keeps audit logs for 30 days unless they are exported,
-  and Purview Audit (Standard) keeps them for 180 days. Investigations older
-  than that depend on what you exported.
+- **Retention.** Entra keeps audit and sign-in logs for 7 days on Entra ID
+  Free and 30 days on P1/P2 unless you export them. Purview Audit (Standard)
+  keeps unified audit log records (including Exchange mailbox activity) for
+  180 days. Investigations older than that depend on what you exported.
 - **Out of scope:** on-premises AD compromise, endpoint forensics,
   tenant-wide Global Administrator compromise, and legal or regulatory
   notification decisions.
@@ -136,6 +137,7 @@ As of 2026-11-01, only the following was done:
 |---|---|
 | Every table, column, activity name, API, permission and ATT&CK ID in this repo checked against the source page listed in [`SOURCES.md`](SOURCES.md) | Done, by reading each page on 2026-11-01 |
 | All 12 queries parsed and bound by [`tools/kqlcheck`](tools/kqlcheck) (Microsoft `Kusto.Language` 12.4.1) against schemas taken from the Azure Monitor table reference pages | 12/12 passed with no errors. A deliberate bad-column, bad-syntax and bad-table test each failed as expected, which shows that the check does catch those cases |
+| Second, independent read of every claim against its source (2026-11-01), with query logic fixes for 03, 06, 07 and 12 applied afterwards | Done. The fixed queries still pass the static check; they have not been run against data |
 | Queries run against real or sample data | **Not done** |
 | Runbook steps run in a tenant | **Not done** |
 | Tabletop run with a team | **Not done** |

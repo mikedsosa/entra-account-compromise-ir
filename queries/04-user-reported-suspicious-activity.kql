@@ -9,8 +9,14 @@
 //         AuditLogs (activities "Suspicious activity reported",
 //         "Fraud reported - user is blocked for MFA",
 //         "Fraud reported - no action taken")
-// Needs:  "Report suspicious activity" turned on in the MFA settings. Per Learn
-//         it raises the user to High risk (ID Protection P2 for the risk event).
+//         The two "Fraud reported" activities come from the legacy Fraud alert
+//         feature, which was removed Mar 1, 2025. Expect "Suspicious activity
+//         reported" in current tenants.
+// Needs:  "Report suspicious activity" set to Enabled (it stays off under
+//         "Microsoft managed"). Per Learn it sets the user to High risk, but
+//         not for passwordless sign-ins. The ID Protection page lists the
+//         detection as Premium (P2), while the MFA settings page describes it
+//         for P1 tenants too. Check in your tenant.
 // Sources:
 //   https://learn.microsoft.com/en-us/azure/azure-monitor/reference/tables/aaduserriskevents
 //   https://learn.microsoft.com/en-us/azure/azure-monitor/reference/tables/auditlogs

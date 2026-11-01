@@ -16,11 +16,12 @@
 //         baselining.
 // Note:   Conditional Access names are matched case-insensitively (in~). The
 //         reference page writes them as "Add Conditional Access policy" etc.
-//         Entra audit logs are kept 30 days unless exported (Sentinel export
-//         extends this).
+//         Entra audit logs are kept 7 days (Free) or 30 days (P1/P2) unless
+//         exported (Sentinel export extends this).
 // Sources:
 //   https://learn.microsoft.com/en-us/azure/azure-monitor/reference/tables/auditlogs
 //   https://learn.microsoft.com/en-us/entra/identity/monitoring-health/reference-audit-activities
+//   https://learn.microsoft.com/en-us/entra/identity/monitoring-health/reference-reports-data-retention
 //   https://learn.microsoft.com/en-us/entra/architecture/security-operations-user-accounts
 //   https://attack.mitre.org/techniques/T1098/003/
 //   https://attack.mitre.org/techniques/T1098/001/

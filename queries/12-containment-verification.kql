@@ -10,21 +10,23 @@
 //         Part 1 lists the containment activities logged for the user. Part 2
 //         lists any successful sign-ins after containment. Expect none while
 //         the account is disabled. Revocation takes a few minutes to apply,
-//         and access tokens that are already issued can stay valid for about
-//         an hour unless Continuous Access Evaluation applies.
+//         and access tokens that are already issued can stay valid for 60–90
+//         minutes unless Continuous Access Evaluation applies.
 // Sources:
 //   https://learn.microsoft.com/en-us/azure/azure-monitor/reference/tables/auditlogs
 //   https://learn.microsoft.com/en-us/entra/identity/monitoring-health/reference-audit-activities
 //   https://learn.microsoft.com/en-us/graph/api/user-revokesigninsessions?view=graph-rest-1.0
 //   https://learn.microsoft.com/en-us/entra/identity/users/users-revoke-access
+//   https://learn.microsoft.com/en-us/entra/identity-platform/access-tokens
 // =============================================================================
 let target_upn = "user@fabrikam.example";          // placeholder
 let contained_at = datetime(2026-01-01T00:00:00Z);  // placeholder
 let ContainmentActions = AuditLogs
     | where TimeGenerated > contained_at - 1d
-    | where OperationName in ("Disable account", "Update StsRefreshTokenValidFrom Timestamp",
-                              "Reset password (by admin)", "Change user password",
-                              "ConfirmAccountCompromised", "User deleted security info")
+    | where OperationName in ("Disable account", "Update user", "Update StsRefreshTokenValidFrom Timestamp",
+                              "Reset password", "Reset password (by admin)", "Set force change user password",
+                              "Change user password", "ConfirmAccountCompromised", "ConfirmCompromised",
+                              "User deleted security info", "Admin deleted security info")
     | extend TargetUPN = tostring(TargetResources[0].userPrincipalName)
     | where TargetUPN =~ target_upn
     | project TimeGenerated, Check = "containment action logged", Detail = OperationName, Result,

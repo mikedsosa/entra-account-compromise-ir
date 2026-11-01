@@ -14,13 +14,17 @@
 //         detail, and to treat delegated scopes such as Mail.*, Files.*,
 //         MailboxSettings.*, Contacts.*, People.*, Notes.*,
 //         Directory.AccessAsUser.All and user_impersonation as high risk.
-//         Those values live in TargetResources[].modifiedProperties. This
-//         query does a text match over that JSON. The exact property layout
-//         hasn't been verified against real events.
+//         Those values live in TargetResources[].modifiedProperties as
+//         ConsentContext.IsAdminConsent and ConsentAction.Permissions (which
+//         holds "ConsentType: …, Scope: …"). The names are documented by
+//         Microsoft, but this query hasn't been run against real events.
 // Sources:
 //   https://learn.microsoft.com/en-us/azure/azure-monitor/reference/tables/auditlogs
 //   https://learn.microsoft.com/en-us/entra/identity/monitoring-health/reference-audit-activities
 //   https://learn.microsoft.com/en-us/security/operations/incident-response-playbook-app-consent
+//   https://learn.microsoft.com/en-us/entra/architecture/security-operations-applications
+//   https://github.com/Azure/Azure-Sentinel/blob/master/Solutions/Microsoft%20Entra%20ID/Analytic%20Rules/CredentialAddedAfterAdminConsent.yaml
+//   https://github.com/Azure/Azure-Sentinel/blob/master/Solutions/Microsoft%20Entra%20ID/Analytic%20Rules/MaliciousOAuthApp_O365AttackToolkit.yaml
 //   https://learn.microsoft.com/en-us/graph/api/resources/targetresource?view=graph-rest-1.0
 //   https://learn.microsoft.com/en-us/graph/api/resources/auditactivityinitiator?view=graph-rest-1.0
 //   https://learn.microsoft.com/en-us/graph/api/resources/useridentity?view=graph-rest-1.0
@@ -30,6 +34,7 @@
 //   https://attack.mitre.org/techniques/T1550/001/
 // =============================================================================
 let lookback = 7d;
+// playbook excludes Mail.ReadBasic*; expect it to match here
 let high_risk_scopes = dynamic(["Mail.", "Files.", "MailboxSettings.", "Contacts.", "People.", "Notes.",
                                 "Directory.AccessAsUser.All", "user_impersonation"]);
 AuditLogs
@@ -42,9 +47,13 @@ AuditLogs
 | mv-expand Target = TargetResources
 | extend TargetName = tostring(Target.displayName), TargetType = tostring(Target.type),
          TargetId = tostring(Target.id), Modified = tostring(Target.modifiedProperties)
-| extend TenantWide = Modified has "AllPrincipals",
-         AdminConsent = Modified has_cs "IsAdminConsent" and Modified has "True",
+| mv-apply Prop = Target.modifiedProperties on (
+    summarize Props = make_bag(bag_pack(tostring(Prop.displayName), tostring(Prop.newValue))))
+| extend IsAdminConsentValue = tostring(Props["ConsentContext.IsAdminConsent"]),
+         Permissions = tostring(Props["ConsentAction.Permissions"])
+| extend TenantWide = Permissions has "AllPrincipals" or Modified has "AllPrincipals",
+         AdminConsent = IsAdminConsentValue has "True",
          HighRiskScope = Modified has_any (high_risk_scopes)
 | project TimeGenerated, OperationName, Result, ResultReason, InitiatorUPN, InitiatorIP, InitiatorApp,
-          TargetName, TargetType, TargetId, TenantWide, AdminConsent, HighRiskScope, Modified, CorrelationId
+          TargetName, TargetType, TargetId, TenantWide, AdminConsent, HighRiskScope, Permissions, Modified, CorrelationId
 | order by HighRiskScope desc, TenantWide desc, TimeGenerated desc
