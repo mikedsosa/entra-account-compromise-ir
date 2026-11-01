@@ -1,0 +1,38 @@
+// =============================================================================
+// 06 - New or changed inbox rules that forward, redirect, delete or hide mail
+// -----------------------------------------------------------------------------
+// STATUS: UNTESTED. Passed the offline static check in tools/kqlcheck.
+//         It has never been run against a workspace or tenant.
+// Phase:  NIST SP 800-61r2 Detection & Analysis | CSF 2.0 Detect (DE)
+// ATT&CK: T1114.003 Email Collection: Email Forwarding Rule
+//         T1564.008 Hide Artifacts: Email Hiding Rules
+// Table:  OfficeActivity (Sentinel Microsoft 365 connector, Exchange workload)
+// Logic:  Operations New-InboxRule, Set-InboxRule and UpdateInboxRules come
+//         from the Purview audit log activity list. The parameter names
+//         (ForwardTo, ForwardAsAttachmentTo, RedirectTo, DeleteMessage,
+//         SoftDeleteMessage, PermanentDelete, MoveToFolder, MarkAsRead) are
+//         New-InboxRule cmdlet parameters. The match is a plain text match on
+//         the Parameters string column. Rules created from Outlook clients
+//         (UpdateInboxRules) may not carry the same parameter text. That
+//         hasn't been verified, so review all UpdateInboxRules rows by hand.
+//         ID Protection also has suspiciousInboxForwarding and
+//         mcasSuspiciousInboxManipulationRules detections. To pull those,
+//         change the RiskEventType list in query 01.
+// Sources:
+//   https://learn.microsoft.com/en-us/azure/azure-monitor/reference/tables/officeactivity
+//   https://learn.microsoft.com/en-us/purview/audit-log-activities
+//   https://learn.microsoft.com/en-us/powershell/module/exchangepowershell/new-inboxrule?view=exchange-ps
+//   https://attack.mitre.org/techniques/T1114/003/
+//   https://attack.mitre.org/techniques/T1564/008/
+// =============================================================================
+let lookback = 7d;
+OfficeActivity
+| where TimeGenerated > ago(lookback)
+| where Operation in~ ("New-InboxRule", "Set-InboxRule", "UpdateInboxRules")
+| extend Forwards = Parameters has_any ("ForwardTo", "ForwardAsAttachmentTo", "RedirectTo"),
+         HidesOrDeletes = Parameters has_any ("DeleteMessage", "SoftDeleteMessage", "PermanentDelete",
+                                              "MoveToFolder", "MarkAsRead")
+| where Forwards or HidesOrDeletes or Operation =~ "UpdateInboxRules"
+| project TimeGenerated, Operation, UserId, MailboxOwnerUPN, ClientIP, ClientInfoString,
+          ResultStatus, Forwards, HidesOrDeletes, Parameters
+| order by TimeGenerated desc

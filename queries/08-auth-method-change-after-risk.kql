@@ -1,0 +1,42 @@
+// =============================================================================
+// 08 - MFA / security-info changes shortly after a user risk detection
+// -----------------------------------------------------------------------------
+// STATUS: UNTESTED. Passed the offline static check in tools/kqlcheck.
+//         It has never been run against a workspace or tenant.
+// Phase:  NIST SP 800-61r2 Detection & Analysis | CSF 2.0 Detect (DE)
+// ATT&CK: T1556.006 Modify Authentication Process: Multi-Factor Authentication
+//         T1098.005 Account Manipulation: Device Registration
+// Tables: AADUserRiskEvents, AuditLogs
+// Logic:  Attackers who hold a password and a session often register their
+//         own MFA method to keep access. This query joins medium/high risk
+//         detections to security-info activity on the same user within
+//         `window`. AuditLogs TargetResources[0].userPrincipalName is assumed
+//         to be the affected user (Graph targetResource shape). Confirm it
+//         against real events.
+// Sources:
+//   https://learn.microsoft.com/en-us/azure/azure-monitor/reference/tables/aaduserriskevents
+//   https://learn.microsoft.com/en-us/azure/azure-monitor/reference/tables/auditlogs
+//   https://learn.microsoft.com/en-us/graph/api/resources/riskdetection?view=graph-rest-1.0
+//   https://learn.microsoft.com/en-us/entra/identity/monitoring-health/reference-audit-activities
+//   https://learn.microsoft.com/en-us/graph/api/resources/targetresource?view=graph-rest-1.0
+//   https://attack.mitre.org/techniques/T1556/006/
+//   https://attack.mitre.org/techniques/T1098/005/
+// =============================================================================
+let lookback = 7d;
+let window = 24h;   // assumption; tune
+let RiskyUsers = AADUserRiskEvents
+    | where TimeGenerated > ago(lookback)
+    | where RiskLevel in ("medium", "high")
+    | summarize FirstRisk = min(TimeGenerated), RiskTypes = make_set(RiskEventType, 20) by UserPrincipalName;
+AuditLogs
+| where TimeGenerated > ago(lookback)
+| where OperationName in ("User registered security info", "Admin registered security info",
+                          "User deleted security info", "Register device", "Add device")
+| extend TargetUPN = tostring(TargetResources[0].userPrincipalName),
+         InitiatorUPN = tostring(InitiatedBy.user.userPrincipalName),
+         InitiatorIP = tostring(InitiatedBy.user.ipAddress)
+| join kind=inner RiskyUsers on $left.TargetUPN == $right.UserPrincipalName
+| where TimeGenerated between (FirstRisk .. (FirstRisk + window))
+| project TimeGenerated, FirstRisk, TargetUPN, OperationName, Result, ResultReason,
+          InitiatorUPN, InitiatorIP, RiskTypes, CorrelationId
+| order by TimeGenerated asc

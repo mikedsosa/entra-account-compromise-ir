@@ -1,0 +1,49 @@
+// =============================================================================
+// 03 - MFA fatigue / push bombing: repeated MFA denials per user
+// -----------------------------------------------------------------------------
+// STATUS: UNTESTED. Passed the offline static check in tools/kqlcheck.
+//         It has never been run against a workspace or tenant.
+// Phase:  NIST SP 800-61r2 Detection & Analysis | CSF 2.0 Detect (DE)
+// ATT&CK: T1621 Multi-Factor Authentication Request Generation
+//         T1078.004 Valid Accounts: Cloud Accounts
+// Table:  SigninLogs
+// Logic:  ResultType 500121 = "Authentication failed during strong
+//         authentication request." The filter on Status.additionalDetails is
+//         adapted from the Azure-Sentinel community rule MFARejectedbyUser.
+//         ResultType is a string column, so it is compared to "500121".
+//         The rule's success join reports any later successful sign-in by the
+//         same user inside the window. A success after repeated denials is
+//         the pattern to triage first.
+// Thresholds: denial_threshold and window are tuning assumptions.
+// Sources:
+//   https://learn.microsoft.com/en-us/azure/azure-monitor/reference/tables/signinlogs
+//   https://learn.microsoft.com/en-us/graph/api/resources/signinstatus?view=graph-rest-1.0
+//   https://login.microsoftonline.com/error?code=500121
+//   https://learn.microsoft.com/en-us/entra/architecture/security-operations-user-accounts
+//   https://github.com/Azure/Azure-Sentinel/blob/master/Solutions/Microsoft%20Entra%20ID/Analytic%20Rules/MFARejectedbyUser.yaml
+//   https://attack.mitre.org/techniques/T1621/
+// =============================================================================
+let lookback = 1d;
+let window = 1h;
+let denial_threshold = 3;   // assumption; tune per tenant
+let Denials = SigninLogs
+    | where TimeGenerated > ago(lookback)
+    | where ResultType == "500121"
+    | extend AdditionalDetails = tostring(Status.additionalDetails)
+    | where AdditionalDetails =~ "MFA denied; user declined the authentication" or AdditionalDetails has "fraud"
+    | summarize Denials = count(), FirstDenial = min(TimeGenerated), LastDenial = max(TimeGenerated),
+                DenialIPs = make_set(IPAddress, 20), DenialApps = make_set(AppDisplayName, 20)
+                by UserPrincipalName, Bucket = bin(TimeGenerated, window)
+    | where Denials >= denial_threshold;
+let Successes = SigninLogs
+    | where TimeGenerated > ago(lookback)
+    | where ResultType == "0"
+    | project SuccessTime = TimeGenerated, UserPrincipalName, SuccessIP = IPAddress, SuccessApp = AppDisplayName;
+Denials
+| join kind=leftouter Successes on UserPrincipalName
+| where isnull(SuccessTime) or SuccessTime between (FirstDenial .. (LastDenial + window))
+| summarize SuccessesAfterDenials = countif(isnotnull(SuccessTime)),
+            SuccessIPs = make_set_if(SuccessIP, isnotnull(SuccessTime), 20)
+            by UserPrincipalName, Bucket, Denials, FirstDenial, LastDenial,
+               tostring(DenialIPs), tostring(DenialApps)
+| order by SuccessesAfterDenials desc, Denials desc

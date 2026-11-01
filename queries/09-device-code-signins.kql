@@ -1,0 +1,30 @@
+// =============================================================================
+// 09 - Device code flow sign-ins (device code phishing)
+// -----------------------------------------------------------------------------
+// STATUS: UNTESTED. Passed the offline static check in tools/kqlcheck.
+//         It has never been run against a workspace or tenant.
+// Phase:  NIST SP 800-61r2 Detection & Analysis | CSF 2.0 Detect (DE)
+// ATT&CK: T1566.002 Phishing: Spearphishing Link (MITRE describes device
+//         code phishing under this technique)
+//         T1078.004 Valid Accounts: Cloud Accounts
+// Tables: SigninLogs, AADNonInteractiveUserSignInLogs
+//         AuthenticationProtocol "deviceCode" is a documented value on both table pages. In the
+//         non-interactive table, Status, DeviceDetail and LocationDetails are
+//         string columns (dynamic in SigninLogs), so this union only projects
+//         scalar columns.
+// Tuning: most users never use device code flow. If your tenant has known
+//         users (for example, shared meeting-room devices), exclude them.
+//         Blocking the flow with Conditional Access is the stronger control.
+// Sources:
+//   https://learn.microsoft.com/en-us/azure/azure-monitor/reference/tables/signinlogs
+//   https://learn.microsoft.com/en-us/azure/azure-monitor/reference/tables/aadnoninteractiveusersigninlogs
+//   https://attack.mitre.org/techniques/T1566/002/
+// =============================================================================
+let lookback = 7d;
+union
+    (SigninLogs | where TimeGenerated > ago(lookback) | extend Source = "interactive"),
+    (AADNonInteractiveUserSignInLogs | where TimeGenerated > ago(lookback) | extend Source = "non-interactive")
+| where AuthenticationProtocol =~ "deviceCode"
+| project TimeGenerated, Source, UserPrincipalName, ResultType, ResultDescription, IPAddress, Location,
+          AppDisplayName, AppId, ClientAppUsed, UserAgent, ConditionalAccessStatus, CorrelationId
+| order by TimeGenerated desc

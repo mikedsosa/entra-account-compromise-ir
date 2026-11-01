@@ -1,0 +1,40 @@
+// =============================================================================
+// 12 - Containment check: were the actions logged, and is the account quiet?
+// -----------------------------------------------------------------------------
+// STATUS: UNTESTED. Passed the offline static check in tools/kqlcheck.
+//         It has never been run against a workspace or tenant.
+// Phase:  NIST SP 800-61r2 Containment, Eradication & Recovery |
+//         CSF 2.0 Respond (RS.MI), Recover (RC)
+// Tables: AuditLogs, SigninLogs, AADNonInteractiveUserSignInLogs
+// Use:    Set target_upn and contained_at (the time containment finished).
+//         Part 1 lists the containment activities logged for the user. Part 2
+//         lists any successful sign-ins after containment. Expect none while
+//         the account is disabled. Revocation takes a few minutes to apply,
+//         and access tokens that are already issued can stay valid for about
+//         an hour unless Continuous Access Evaluation applies.
+// Sources:
+//   https://learn.microsoft.com/en-us/azure/azure-monitor/reference/tables/auditlogs
+//   https://learn.microsoft.com/en-us/entra/identity/monitoring-health/reference-audit-activities
+//   https://learn.microsoft.com/en-us/graph/api/user-revokesigninsessions?view=graph-rest-1.0
+//   https://learn.microsoft.com/en-us/entra/identity/users/users-revoke-access
+// =============================================================================
+let target_upn = "user@fabrikam.example";          // placeholder
+let contained_at = datetime(2026-01-01T00:00:00Z);  // placeholder
+let ContainmentActions = AuditLogs
+    | where TimeGenerated > contained_at - 1d
+    | where OperationName in ("Disable account", "Update StsRefreshTokenValidFrom Timestamp",
+                              "Reset password (by admin)", "Change user password",
+                              "ConfirmAccountCompromised", "User deleted security info")
+    | extend TargetUPN = tostring(TargetResources[0].userPrincipalName)
+    | where TargetUPN =~ target_upn
+    | project TimeGenerated, Check = "containment action logged", Detail = OperationName, Result,
+              Actor = tostring(InitiatedBy.user.userPrincipalName), IPAddress = "";
+let SignInsAfter = union
+        (SigninLogs | extend Source = "interactive"),
+        (AADNonInteractiveUserSignInLogs | extend Source = "non-interactive")
+    | where TimeGenerated > contained_at
+    | where UserPrincipalName =~ target_upn and ResultType == "0"
+    | project TimeGenerated, Check = "SUCCESSFUL SIGN-IN AFTER CONTAINMENT", Detail = strcat(Source, ": ", AppDisplayName),
+              Result = ResultType, Actor = UserPrincipalName, IPAddress;
+union ContainmentActions, SignInsAfter
+| order by TimeGenerated asc

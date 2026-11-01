@@ -1,0 +1,10 @@
+# .NET build output for tools/kqlcheck
+bin/
+obj/
+# Local query exports / evidence: never commit real tenant data
+*.csv
+*.json
+exports/
+evidence/
+.env
+.DS_Store

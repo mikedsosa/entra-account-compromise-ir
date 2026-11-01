@@ -1,0 +1,50 @@
+// =============================================================================
+// 07 - OAuth consent and permission grants (illicit consent / consent phishing)
+// -----------------------------------------------------------------------------
+// STATUS: UNTESTED. Passed the offline static check in tools/kqlcheck.
+//         It has never been run against a workspace or tenant.
+// Phase:  NIST SP 800-61r2 Detection & Analysis | CSF 2.0 Detect (DE)
+// ATT&CK: T1528 Steal Application Access Token
+//         T1566.002 Phishing: Spearphishing Link (consent phishing delivery)
+//         T1550.001 Use Alternate Authentication Material: Application Access Token
+// Table:  AuditLogs
+// Logic:  Activity names are from the Entra audit activity reference. The app
+//         consent IR playbook says to check IsAdminConsent and ConsentType
+//         (AllPrincipals = whole tenant, Principal = one user) in the event
+//         detail, and to treat delegated scopes such as Mail.*, Files.*,
+//         MailboxSettings.*, Contacts.*, People.*, Notes.*,
+//         Directory.AccessAsUser.All and user_impersonation as high risk.
+//         Those values live in TargetResources[].modifiedProperties. This
+//         query does a text match over that JSON. The exact property layout
+//         hasn't been verified against real events.
+// Sources:
+//   https://learn.microsoft.com/en-us/azure/azure-monitor/reference/tables/auditlogs
+//   https://learn.microsoft.com/en-us/entra/identity/monitoring-health/reference-audit-activities
+//   https://learn.microsoft.com/en-us/security/operations/incident-response-playbook-app-consent
+//   https://learn.microsoft.com/en-us/graph/api/resources/targetresource?view=graph-rest-1.0
+//   https://learn.microsoft.com/en-us/graph/api/resources/auditactivityinitiator?view=graph-rest-1.0
+//   https://learn.microsoft.com/en-us/graph/api/resources/useridentity?view=graph-rest-1.0
+//   https://learn.microsoft.com/en-us/graph/api/resources/appidentity?view=graph-rest-1.0
+//   https://attack.mitre.org/techniques/T1528/
+//   https://attack.mitre.org/techniques/T1566/002/
+//   https://attack.mitre.org/techniques/T1550/001/
+// =============================================================================
+let lookback = 7d;
+let high_risk_scopes = dynamic(["Mail.", "Files.", "MailboxSettings.", "Contacts.", "People.", "Notes.",
+                                "Directory.AccessAsUser.All", "user_impersonation"]);
+AuditLogs
+| where TimeGenerated > ago(lookback)
+| where OperationName in ("Consent to application", "Add delegated permission grant",
+                          "Add app role assignment to service principal")
+| extend InitiatorUPN = tostring(InitiatedBy.user.userPrincipalName),
+         InitiatorIP  = tostring(InitiatedBy.user.ipAddress),
+         InitiatorApp = tostring(InitiatedBy.app.displayName)
+| mv-expand Target = TargetResources
+| extend TargetName = tostring(Target.displayName), TargetType = tostring(Target.type),
+         TargetId = tostring(Target.id), Modified = tostring(Target.modifiedProperties)
+| extend TenantWide = Modified has "AllPrincipals",
+         AdminConsent = Modified has_cs "IsAdminConsent" and Modified has "True",
+         HighRiskScope = Modified has_any (high_risk_scopes)
+| project TimeGenerated, OperationName, Result, ResultReason, InitiatorUPN, InitiatorIP, InitiatorApp,
+          TargetName, TargetType, TargetId, TenantWide, AdminConsent, HighRiskScope, Modified, CorrelationId
+| order by HighRiskScope desc, TenantWide desc, TimeGenerated desc

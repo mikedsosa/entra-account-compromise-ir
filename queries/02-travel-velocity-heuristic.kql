@@ -1,0 +1,49 @@
+// =============================================================================
+// 02 - Travel-velocity heuristic on successful interactive sign-ins
+// -----------------------------------------------------------------------------
+// STATUS: UNTESTED. Passed the offline static check in tools/kqlcheck.
+//         It has never been run against a workspace or tenant.
+// Use:    A fallback for tenants without P2 risk detections (see query 01).
+//         It is noisy: VPNs, mobile carriers and cloud egress IPs move apparent
+//         location. Treat hits as leads to triage, not as verdicts.
+// Phase:  NIST SP 800-61r2 Detection & Analysis | CSF 2.0 Detect (DE)
+// ATT&CK: T1078.004 Valid Accounts: Cloud Accounts
+// Table:  SigninLogs (LocationDetails is dynamic in this table)
+// Fields: LocationDetails.geoCoordinates.latitude / .longitude
+//         The path follows the Microsoft Graph signInLocation and
+//         geoCoordinates resources. The Azure Monitor page documents
+//         LocationDetails only as including latitude and longitude, so confirm
+//         the path against your own data before you rely on it.
+// Thresholds: min_km and max_kmh are starting assumptions for tuning. They
+//         are not measured values.
+// Sources:
+//   https://learn.microsoft.com/en-us/azure/azure-monitor/reference/tables/signinlogs
+//   https://learn.microsoft.com/en-us/graph/api/resources/signinlocation?view=graph-rest-1.0
+//   https://learn.microsoft.com/en-us/graph/api/resources/geocoordinates?view=graph-rest-1.0
+//   https://learn.microsoft.com/en-us/kusto/query/geo-distance-2points-function
+//   https://learn.microsoft.com/en-us/kusto/query/prev-function
+//   https://attack.mitre.org/techniques/T1078/004/
+// =============================================================================
+let lookback = 1d;
+let min_km = 500.0;     // ignore short hops (assumption; tune)
+let max_kmh = 900.0;    // roughly airliner speed (assumption; tune)
+SigninLogs
+| where TimeGenerated > ago(lookback)
+| where ResultType == "0"
+| extend Lat = todouble(LocationDetails.geoCoordinates.latitude),
+         Lon = todouble(LocationDetails.geoCoordinates.longitude)
+| where isnotnull(Lat) and isnotnull(Lon)
+| project TimeGenerated, UserPrincipalName, IPAddress, Location, Lat, Lon, AppDisplayName, CorrelationId
+| sort by UserPrincipalName asc, TimeGenerated asc
+| extend PrevUser = prev(UserPrincipalName), PrevTime = prev(TimeGenerated),
+         PrevLat = prev(Lat), PrevLon = prev(Lon), PrevIP = prev(IPAddress), PrevLocation = prev(Location)
+| where UserPrincipalName == PrevUser and IPAddress != PrevIP
+| extend DistanceKm = geo_distance_2points(PrevLon, PrevLat, Lon, Lat) / 1000.0,
+         Hours = datetime_diff('second', TimeGenerated, PrevTime) / 3600.0
+| where DistanceKm >= min_km
+| extend SpeedKmh = iff(Hours > 0, DistanceKm / Hours, real(+inf))
+| where SpeedKmh > max_kmh
+| project UserPrincipalName, PrevTime, PrevIP, PrevLocation, TimeGenerated, IPAddress, Location,
+          DistanceKm = round(DistanceKm, 0), Hours = round(Hours, 2), SpeedKmh = round(SpeedKmh, 0),
+          AppDisplayName, CorrelationId
+| order by SpeedKmh desc

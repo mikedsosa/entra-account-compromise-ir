@@ -1,0 +1,38 @@
+// =============================================================================
+// 04 - Users who reported an MFA prompt they didn't start
+// -----------------------------------------------------------------------------
+// STATUS: UNTESTED. Passed the offline static check in tools/kqlcheck.
+//         It has never been run against a workspace or tenant.
+// Phase:  NIST SP 800-61r2 Detection & Analysis | CSF 2.0 Detect (DE)
+// ATT&CK: T1621 Multi-Factor Authentication Request Generation
+// Tables: AADUserRiskEvents (RiskEventType userReportedSuspiciousActivity)
+//         AuditLogs (activities "Suspicious activity reported",
+//         "Fraud reported - user is blocked for MFA",
+//         "Fraud reported - no action taken")
+// Needs:  "Report suspicious activity" turned on in the MFA settings. Per Learn
+//         it raises the user to High risk (ID Protection P2 for the risk event).
+// Sources:
+//   https://learn.microsoft.com/en-us/azure/azure-monitor/reference/tables/aaduserriskevents
+//   https://learn.microsoft.com/en-us/azure/azure-monitor/reference/tables/auditlogs
+//   https://learn.microsoft.com/en-us/entra/id-protection/concept-identity-protection-risks
+//   https://learn.microsoft.com/en-us/entra/identity/monitoring-health/reference-audit-activities
+//   https://learn.microsoft.com/en-us/entra/identity/authentication/howto-mfa-mfasettings
+//   https://attack.mitre.org/techniques/T1621/
+// =============================================================================
+let lookback = 7d;
+union
+    (AADUserRiskEvents
+     | where TimeGenerated > ago(lookback)
+     | where RiskEventType == "userReportedSuspiciousActivity"
+     | project TimeGenerated, UserPrincipalName, Signal = RiskEventType, Detail = RiskDetail,
+               IP = IpAddress, CorrelationId),
+    (AuditLogs
+     | where TimeGenerated > ago(lookback)
+     | where OperationName in ("Suspicious activity reported",
+                               "Fraud reported - user is blocked for MFA",
+                               "Fraud reported - no action taken")
+     | project TimeGenerated,
+               UserPrincipalName = tostring(TargetResources[0].userPrincipalName),
+               Signal = OperationName, Detail = ResultReason,
+               IP = tostring(InitiatedBy.user.ipAddress), CorrelationId)
+| order by TimeGenerated desc

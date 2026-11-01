@@ -1,0 +1,27 @@
+// =============================================================================
+// 05 - Medium/high-risk sign-ins, including the ones that succeeded
+// -----------------------------------------------------------------------------
+// STATUS: UNTESTED. Passed the offline static check in tools/kqlcheck.
+//         It has never been run against a workspace or tenant.
+// Phase:  NIST SP 800-61r2 Detection & Analysis | CSF 2.0 Detect (DE)
+// ATT&CK: T1078.004 Valid Accounts: Cloud Accounts
+// Table:  SigninLogs
+// Values: per Microsoft Graph signIn, riskLevelDuringSignIn and
+//         riskLevelAggregated are none, low, medium, high, hidden or
+//         unknownFutureValue. Non-P2 tenants get "hidden".
+// Sources:
+//   https://learn.microsoft.com/en-us/azure/azure-monitor/reference/tables/signinlogs
+//   https://learn.microsoft.com/en-us/graph/api/resources/signin?view=graph-rest-1.0
+//   https://attack.mitre.org/techniques/T1078/004/
+// =============================================================================
+let lookback = 1d;
+SigninLogs
+| where TimeGenerated > ago(lookback)
+| where RiskLevelDuringSignIn in ("medium", "high") or RiskLevelAggregated in ("medium", "high")
+| extend Succeeded = ResultType == "0"
+| project TimeGenerated, UserPrincipalName, Succeeded, ResultType, ResultDescription,
+          IPAddress, Location, AutonomousSystemNumber, AppDisplayName, ClientAppUsed, UserAgent,
+          ConditionalAccessStatus, AuthenticationRequirement,
+          RiskLevelDuringSignIn, RiskLevelAggregated, RiskState, RiskDetail, RiskEventTypes_V2,
+          SessionId, CorrelationId
+| order by Succeeded desc, TimeGenerated desc

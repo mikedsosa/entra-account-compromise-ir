@@ -1,0 +1,29 @@
+// =============================================================================
+// 01 - Impossible / atypical travel risk detections (Entra ID Protection)
+// -----------------------------------------------------------------------------
+// STATUS: UNTESTED. Passed the offline static check in tools/kqlcheck.
+//         It has never been run against a workspace or tenant.
+// Phase:  NIST SP 800-61r2 Detection & Analysis | CSF 2.0 Detect (DE)
+// ATT&CK: T1078.004 Valid Accounts: Cloud Accounts
+// Table:  AADUserRiskEvents (Sentinel Entra ID connector, "User Risk Events")
+// Needs:  Microsoft Entra ID P2 for full risk detail. Free/P1 tenants see
+//         RiskEventType "generic". mcasImpossibleTravel also needs Microsoft
+//         Defender for Cloud Apps.
+// Note:   Learn's risk-detection concept page names the detections
+//         unlikelyTravel (atypical travel) and mcasImpossibleTravel. The Graph
+//         riskDetection enum also lists impossibleTravel. All three are
+//         included so that neither naming is missed.
+// Sources:
+//   https://learn.microsoft.com/en-us/azure/azure-monitor/reference/tables/aaduserriskevents
+//   https://learn.microsoft.com/en-us/entra/id-protection/concept-identity-protection-risks
+//   https://learn.microsoft.com/en-us/graph/api/resources/riskdetection?view=graph-rest-1.0
+//   https://attack.mitre.org/techniques/T1078/004/
+// =============================================================================
+let lookback = 1d;
+AADUserRiskEvents
+| where TimeGenerated > ago(lookback)
+| where RiskEventType in ("unlikelyTravel", "impossibleTravel", "mcasImpossibleTravel")
+| project TimeGenerated, ActivityDateTime, DetectedDateTime, UserPrincipalName, UserId,
+          RiskEventType, RiskLevel, RiskState, RiskDetail, DetectionTimingType, Source,
+          IpAddress, Location, CorrelationId, RequestId
+| order by TimeGenerated desc

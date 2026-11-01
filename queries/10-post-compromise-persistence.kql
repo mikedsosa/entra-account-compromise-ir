@@ -1,0 +1,53 @@
+// =============================================================================
+// 10 - Persistence and privilege changes made by (or to) a suspect account
+// -----------------------------------------------------------------------------
+// STATUS: UNTESTED. Passed the offline static check in tools/kqlcheck.
+//         It has never been run against a workspace or tenant.
+// Phase:  NIST SP 800-61r2 Detection & Analysis, then Eradication scoping |
+//         CSF 2.0 Detect (DE), Respond (RS)
+// ATT&CK: T1098.003 Account Manipulation: Additional Cloud Roles
+//         T1098.001 Account Manipulation: Additional Cloud Credentials
+//         T1098.005 Account Manipulation: Device Registration
+//         T1556.006 Modify Authentication Process: Multi-Factor Authentication
+// Table:  AuditLogs
+// Use:    Set suspect_upns to the account(s) under investigation, then run
+//         over the whole suspected compromise window. An empty list returns
+//         these activities for everyone, which is noisy but useful for
+//         baselining.
+// Note:   Conditional Access names are matched case-insensitively (in~). The
+//         reference page writes them as "Add Conditional Access policy" etc.
+//         Entra audit logs are kept 30 days unless exported (Sentinel export
+//         extends this).
+// Sources:
+//   https://learn.microsoft.com/en-us/azure/azure-monitor/reference/tables/auditlogs
+//   https://learn.microsoft.com/en-us/entra/identity/monitoring-health/reference-audit-activities
+//   https://learn.microsoft.com/en-us/entra/architecture/security-operations-user-accounts
+//   https://attack.mitre.org/techniques/T1098/003/
+//   https://attack.mitre.org/techniques/T1098/001/
+//   https://attack.mitre.org/techniques/T1098/005/
+//   https://attack.mitre.org/techniques/T1556/006/
+// =============================================================================
+let lookback = 14d;
+let suspect_upns = dynamic([]);   // e.g. dynamic(["user@fabrikam.example"])
+AuditLogs
+| where TimeGenerated > ago(lookback)
+| where OperationName in~ (
+    "Add member to role", "Add eligible member to role",
+    "Add service principal", "Add service principal credentials",
+    "Update application - Certificates and secrets management", "Add owner to application",
+    "User registered security info", "Admin registered security info", "User deleted security info",
+    "Register device", "Add device",
+    "Add Conditional Access policy", "Update Conditional Access policy", "Delete Conditional Access policy",
+    "Update named location",
+    "Set federation settings on domain", "Set domain authentication", "Add verified domain",
+    "Add user", "Invite external user")
+| extend InitiatorUPN = tostring(InitiatedBy.user.userPrincipalName),
+         InitiatorIP  = tostring(InitiatedBy.user.ipAddress),
+         InitiatorApp = tostring(InitiatedBy.app.displayName),
+         TargetName   = tostring(TargetResources[0].displayName),
+         TargetUPN    = tostring(TargetResources[0].userPrincipalName),
+         TargetType   = tostring(TargetResources[0].type)
+| where array_length(suspect_upns) == 0 or InitiatorUPN in~ (suspect_upns) or TargetUPN in~ (suspect_upns)
+| project TimeGenerated, OperationName, Category, Result, ResultReason, InitiatorUPN, InitiatorIP, InitiatorApp,
+          TargetName, TargetUPN, TargetType, CorrelationId
+| order by TimeGenerated asc

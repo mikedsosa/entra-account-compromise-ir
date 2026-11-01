@@ -1,0 +1,2 @@
+AADUserRiskEvents
+Activity:string, ActivityDateTime:datetime, AdditionalInfo:dynamic, _BilledSize:real, CorrelationId:string, DetectedDateTime:datetime, DetectionTimingType:string, Id:string, IpAddress:string, _IsBillable:string, LastUpdatedDateTime:datetime, Location:dynamic, OperationName:string, RequestId:string, RiskDetail:string, RiskEventType:string, RiskLevel:string, RiskState:string, Source:string, SourceSystem:string, TenantId:string, TimeGenerated:datetime, TokenIssuerType:string, Type:string, UserDisplayName:string, UserId:string, UserPrincipalName:string

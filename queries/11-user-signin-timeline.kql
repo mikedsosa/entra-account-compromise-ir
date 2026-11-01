@@ -1,0 +1,33 @@
+// =============================================================================
+// 11 - Triage: one user's sign-in timeline (interactive + non-interactive)
+// -----------------------------------------------------------------------------
+// STATUS: UNTESTED. Passed the offline static check in tools/kqlcheck.
+//         It has never been run against a workspace or tenant.
+// Phase:  NIST SP 800-61r2 Detection & Analysis (scoping) | CSF 2.0 Respond (RS.AN)
+// ATT&CK: T1078.004 Valid Accounts: Cloud Accounts
+//         T1539 Steal Web Session Cookie / T1550.001 (token replay shows
+//         up as non-interactive sign-ins from new IPs)
+// Tables: SigninLogs, AADNonInteractiveUserSignInLogs (scalar columns only;
+//         see the note in query 09 about column types)
+// Use:    Set target_upn. Summarises by IP so new infrastructure stands out,
+//         with first/last seen and the session IDs used from each IP.
+// Sources:
+//   https://learn.microsoft.com/en-us/azure/azure-monitor/reference/tables/signinlogs
+//   https://learn.microsoft.com/en-us/azure/azure-monitor/reference/tables/aadnoninteractiveusersigninlogs
+//   https://attack.mitre.org/techniques/T1078/004/
+//   https://attack.mitre.org/techniques/T1539/
+//   https://attack.mitre.org/techniques/T1550/001/
+// =============================================================================
+let lookback = 14d;
+let target_upn = "user@fabrikam.example";   // placeholder
+union
+    (SigninLogs | where TimeGenerated > ago(lookback) | extend Source = "interactive"),
+    (AADNonInteractiveUserSignInLogs | where TimeGenerated > ago(lookback) | extend Source = "non-interactive")
+| where UserPrincipalName =~ target_upn
+| summarize FirstSeen = min(TimeGenerated), LastSeen = max(TimeGenerated),
+            Total = count(), Successes = countif(ResultType == "0"),
+            Sources = make_set(Source), Apps = make_set(AppDisplayName, 20),
+            UserAgents = make_set(UserAgent, 10), SessionIds = make_set(SessionId, 20),
+            ResultTypes = make_set(ResultType, 20)
+            by IPAddress, Location, AutonomousSystemNumber
+| order by FirstSeen asc
