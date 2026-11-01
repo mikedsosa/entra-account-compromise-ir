@@ -191,5 +191,5 @@ minimum, record:
   changed and why.
 
 Track each action item to an owner and a date. The companion
-`azure-entra-identity-hardening` project (a separate repo) holds the Conditional Access baselines that most of these
+[`azure-entra-identity-hardening`](https://github.com/mikedsosa/azure-entra-identity-hardening) project (a separate repo) holds the Conditional Access baselines that most of these
 fixes would land in.

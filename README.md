@@ -143,7 +143,7 @@ As of 2026-11-01, only the following was done:
 
 ## Related
 
-- `azure-entra-identity-hardening` is a companion project. It holds the
+- [`azure-entra-identity-hardening`](https://github.com/mikedsosa/azure-entra-identity-hardening) is a companion project. It holds the
   Terraform baseline for Conditional Access, break-glass and PIM that
   prevents or limits many of the attack paths here. Its short runbooks are
   the starting point this repo expands on.
