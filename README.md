@@ -137,7 +137,7 @@ As of 2026-11-01, only the following was done:
 |---|---|
 | Every table, column, activity name, API, permission and ATT&CK ID in this repo checked against the source page listed in [`SOURCES.md`](SOURCES.md) | Done, by reading each page on 2026-11-01 |
 | All 12 queries parsed and bound by [`tools/kqlcheck`](tools/kqlcheck) (Microsoft `Kusto.Language` 12.4.1) against schemas taken from the Azure Monitor table reference pages | 12/12 passed with no errors. A deliberate bad-column, bad-syntax and bad-table test each failed as expected, which shows that the check does catch those cases |
-| Second, independent read of every claim against its source (2026-11-01), with query logic fixes for 03, 06, 07 and 12 applied afterwards | Done. The fixed queries still pass the static check; they have not been run against data |
+| Second, independent read of every claim against its source (2026-11-01), with logic fixes to queries 03, 06 and 07 and missing activity names added to query 12 afterwards | Done. The fixed queries still pass the static check; they have not been run against data |
 | Queries run against real or sample data | **Not done** |
 | Runbook steps run in a tenant | **Not done** |
 | Tabletop run with a team | **Not done** |
