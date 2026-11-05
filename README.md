@@ -12,6 +12,10 @@ the NIST SP 800-61 phases and MITRE ATT&CK technique IDs.
 > listed under [What has been validated](#what-has-been-validated). Treat
 > everything else as a starting point that you test in your own lab first.
 
+## Lab / how to run
+
+Draft incident-response runbook for a compromised Microsoft Entra ID user account, with KQL detection and triage queries for Microsoft Sentinel and Log Analytics plus a tabletop exercise. The queries and runbook are untested against any tenant—treat this as a lab starting point, not a production playbook. Offline static check: `cd tools/kqlcheck && dotnet run -- ../..`. Paste each query into a lab Log Analytics or Sentinel workspace before promoting anything; see [How to use](#how-to-use).
+
 ---
 
 ## Problem
