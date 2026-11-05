@@ -1,5 +1,8 @@
 # Entra ID Account Compromise: Incident Response Runbook and Detections
 
+[![CI](https://github.com/mikedsosa/entra-account-compromise-ir/actions/workflows/ci.yml/badge.svg)](https://github.com/mikedsosa/entra-account-compromise-ir/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 An incident response runbook for a compromised Microsoft Entra ID user
 account. It ships with KQL detection and triage queries for Microsoft Sentinel
 and Log Analytics, a flow diagram, and a tabletop exercise. Each step maps to
