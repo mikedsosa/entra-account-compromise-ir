@@ -168,7 +168,7 @@ alert.
 | 4.5 | Role assignments the attacker added | Review `Add member to role` / `Add eligible member to role` (query `10`) and remove anything unapproved | [T1098.003](https://attack.mitre.org/techniques/T1098/003/) | [Audit activities](https://learn.microsoft.com/en-us/entra/identity/monitoring-health/reference-audit-activities) |
 | 4.6 | App / service principal credentials or owners the attacker added | Review `Add service principal credentials`, `Update application - Certificates and secrets management` and `Add owner to application` (query `10`). Remove the credentials and rotate any secrets that may have been exposed | [T1098.001](https://attack.mitre.org/techniques/T1098/001/) | [Audit activities](https://learn.microsoft.com/en-us/entra/identity/monitoring-health/reference-audit-activities) |
 | 4.7 | Tenant-level changes (CA policies, named locations, federation or domain settings) | Review the matching `AuditLogs` activities (query `10`) and roll back. A change to federation settings means you **escalate**: treat it as a tenant-wide incident | [T1556.006](https://attack.mitre.org/techniques/T1556/006/) | [Audit activities](https://learn.microsoft.com/en-us/entra/identity/monitoring-health/reference-audit-activities) |
-| 4.8 | Other accounts hit by the same campaign | Search for the attacker IPs, app IDs and inbox rule patterns across all users. Each new account goes back to step 3 | — | — |
+| 4.8 | Other accounts hit by the same campaign | Search for the attacker IPs, app IDs and inbox rule patterns across all users. Each new account goes back to step 3 | - | - |
 
 ## 5. Recover
 

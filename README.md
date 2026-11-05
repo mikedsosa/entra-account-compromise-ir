@@ -17,7 +17,7 @@ the NIST SP 800-61 phases and MITRE ATT&CK technique IDs.
 
 ## Lab / how to run
 
-Draft incident-response runbook for a compromised Microsoft Entra ID user account, with KQL detection and triage queries for Microsoft Sentinel and Log Analytics plus a tabletop exercise. The queries and runbook are untested against any tenant—treat this as a lab starting point, not a production playbook. Offline static check: `cd tools/kqlcheck && dotnet run -- ../..`. Paste each query into a lab Log Analytics or Sentinel workspace before promoting anything; see [How to use](#how-to-use).
+Draft incident-response runbook for a compromised Microsoft Entra ID user account, with KQL detection and triage queries for Microsoft Sentinel and Log Analytics plus a tabletop exercise. The queries and runbook are untested against any tenant - treat this as a lab starting point, not a production playbook. Offline static check: `cd tools/kqlcheck && dotnet run -- ../..`. Paste each query into a lab Log Analytics or Sentinel workspace before promoting anything; see [How to use](#how-to-use).
 
 ---
 
@@ -76,7 +76,7 @@ There's a more detailed diagram in the runbook.
 | 09 | Device code flow sign-ins | SigninLogs, AADNonInteractiveUserSignInLogs | T1566.002, T1078.004 |
 | 10 | Persistence and privilege changes | AuditLogs | T1098.001, T1098.003, T1098.005, T1556.006 |
 | 11 | Triage: one user's sign-in timeline by IP | SigninLogs, AADNonInteractiveUserSignInLogs | T1078.004, T1539, T1550.001 |
-| 12 | Containment verification | AuditLogs, SigninLogs, AADNonInteractiveUserSignInLogs | — |
+| 12 | Containment verification | AuditLogs, SigninLogs, AADNonInteractiveUserSignInLogs | - |
 
 ## How to use
 
