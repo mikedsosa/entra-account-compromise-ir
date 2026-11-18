@@ -3,6 +3,8 @@
 // -----------------------------------------------------------------------------
 // STATUS: UNTESTED. Passed the offline static check in tools/kqlcheck.
 //         It has never been run against a workspace or tenant.
+//         The DeleteMessage=False case was checked against synthetic
+//         OfficeActivity Parameters JSON, not tenant logs.
 // Phase:  NIST SP 800-61r2 Detection & Analysis | CSF 2.0 Detect (DE)
 // ATT&CK: T1114.003 Email Collection: Email Forwarding Rule
 //         T1564.008 Hide Artifacts: Email Hiding Rules
@@ -11,8 +13,18 @@
 //         from the Purview audit log activity list. The parameter names
 //         (ForwardTo, ForwardAsAttachmentTo, RedirectTo, DeleteMessage,
 //         SoftDeleteMessage, PermanentDelete, MoveToFolder, MarkAsRead) are
-//         New-InboxRule cmdlet parameters. The match is a plain text match on
-//         the Parameters string column. Rules changed from Outlook clients
+//         New-InboxRule cmdlet parameters. Parameters is a string column.
+//         This query parses it as a JSON array of Name/Value objects (the
+//         usual OfficeActivity shape) and treats the boolean hide/delete
+//         actions (DeleteMessage, SoftDeleteMessage, PermanentDelete,
+//         MarkAsRead) as a hit only when the value is true, whether the
+//         JSON form is a boolean or a string such as "True". A
+//         Set-InboxRule that turns an action off (DeleteMessage=False)
+//         is not a hit. Forwarding parameters and MoveToFolder still
+//         match on the parameter name, because those values are addresses
+//         or folder names, not booleans. The Name/Value shape and the
+//         true/false check were tested against synthetic OfficeActivity
+//         rows, not tenant logs. Rules changed from Outlook clients
 //         (UpdateInboxRules) carry their rule actions in OperationProperties,
 //         not Parameters, per third-party detections (Splunk Security
 //         Content); Microsoft doesn't document the layout. Review all
@@ -33,11 +45,22 @@ OfficeActivity
 | where TimeGenerated > ago(lookback)
 | where Operation in~ ("New-InboxRule", "Set-InboxRule", "UpdateInboxRules")
 | extend OpProps = tostring(OperationProperties)
-| extend Forwards = Parameters has_any ("ForwardTo", "ForwardAsAttachmentTo", "RedirectTo")
+| extend ParamsParsed = parse_json(tostring(Parameters))
+| extend Params = iff(array_length(ParamsParsed) > 0, ParamsParsed, dynamic([{}]))
+| mv-expand Params
+| extend ParamName = tostring(Params.Name), ParamValue = tostring(Params.Value)
+| extend TrueVal = ParamValue in~ ("true")
+| extend Forwards = ParamName in~ ("ForwardTo", "ForwardAsAttachmentTo", "RedirectTo")
                     or OpProps has_any ("ForwardToRecipientsAction", "ForwardAsAttachmentToRecipientsAction",
                                         "RedirectToRecipientsAction"),
-         HidesOrDeletes = Parameters has_any ("DeleteMessage", "SoftDeleteMessage", "PermanentDelete",
-                                              "MoveToFolder", "MarkAsRead")
+         HidesOrDeletes = (ParamName in~ ("DeleteMessage", "SoftDeleteMessage", "PermanentDelete", "MarkAsRead")
+                           and TrueVal)
+                       or ParamName =~ "MoveToFolder"
+| summarize Forwards = max(Forwards), HidesOrDeletes = max(HidesOrDeletes),
+            Parameters = any(Parameters), OperationProperties = any(OperationProperties),
+            MailboxOwnerUPN = any(MailboxOwnerUPN), ClientIP = any(ClientIP),
+            ClientInfoString = any(ClientInfoString), ResultStatus = any(ResultStatus)
+            by TimeGenerated, Operation, UserId
 | where Forwards or HidesOrDeletes or Operation =~ "UpdateInboxRules"
 | project TimeGenerated, Operation, UserId, MailboxOwnerUPN, ClientIP, ClientInfoString,
           ResultStatus, Forwards, HidesOrDeletes, Parameters, OperationProperties
